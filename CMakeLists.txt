@@ -61,5 +61,5 @@ add_executable( mesh-2-pc.out main.cpp )
 add_to_cached_list( CGAL_EXECUTABLE_TARGETS mesh-2-pc.out )
 
 # Link the executable to CGAL and third-party libraries
-target_link_libraries(mesh-2-pc.out PRIVATE CGAL::CGAL Threads::Threads)
+target_link_libraries(mesh-2-pc.out PRIVATE CGAL::CGAL OpenMeshCore OpenMeshTools Threads::Threads)
 
