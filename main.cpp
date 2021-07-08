@@ -10,6 +10,9 @@
 #include <CGAL/IO/write_ply_points.h>
 #include <CGAL/IO/Color.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
 #include <iostream>
 #include <fstream>
 #include <array>
@@ -89,16 +92,26 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	std::cout << "End edge" << std::endl;
-
 	// Write Point Cloud
 
 	CGAL::Point_set point_set;
 	CGAL::Color_map color;
 
 	boost::tie (color, boost::tuples::ignore) = point_set.add_property_map<CGAL::Color>("color", CGAL::Color(0, 0, 0));
-	auto point = point_set.insert (CGAL::Kernel::Point_3(0., 0., 0.));
-	color[*point] = CGAL::Color(255, 255, 255);
+
+	for (int i = 0; i < num_textures; i++) {
+		int width, height, n;
+		unsigned char *data = stbi_load((std::string(argv[1]).substr(0, std::string(argv[1]).find_last_of('/')+1)+mesh.property(textures_files)[i]).c_str(), &width, &height, &n, 3);
+		
+		for (int v = 0; v < height; v++) {
+			for (int u = 0; u < width; u++) {
+				auto point = point_set.insert (CGAL::Kernel::Point_3(0., 0., 0.));
+				color[*point] = CGAL::Color(data[3*(u + v*width) + 0], data[3*(u + v*width) + 1], data[3*(u + v*width) + 2]);
+			}
+		}
+	}
+
+	// Output file
 
 	std::ofstream out_file (argv[2]);
 	CGAL::write_ply_points_with_properties(out_file, point_set,
