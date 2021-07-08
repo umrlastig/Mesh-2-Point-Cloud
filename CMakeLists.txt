@@ -40,18 +40,8 @@ if ( NOT OpenMesh_FOUND )
 
 endif()
 
-# Multithreading
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-
-find_package( Threads REQUIRED )
-
-if ( NOT Threads_FOUND )
-
-  message(STATUS "This project requires the Multithreading capacity, and will not be compiled.")
-
-  return()  
-
-endif()
+# STB Image
+find_path(STB_Image stb/stb_image.h REQUIRED)
 
 # Creating entries for target: mesh-2-pc.out
 # ############################
@@ -61,5 +51,5 @@ add_executable( mesh-2-pc.out main.cpp )
 add_to_cached_list( CGAL_EXECUTABLE_TARGETS mesh-2-pc.out )
 
 # Link the executable to CGAL and third-party libraries
-target_link_libraries(mesh-2-pc.out PRIVATE CGAL::CGAL OpenMeshCore OpenMeshTools Threads::Threads)
+target_link_libraries(mesh-2-pc.out PRIVATE CGAL::CGAL OpenMeshCore OpenMeshTools)
 
