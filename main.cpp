@@ -97,6 +97,14 @@ int main(int argc, char *argv[]) {
 
 	for (auto vertex: mesh.vertices()) {
 		auto normal = mesh.normal(vertex);
+		if (normal.length() == 0) {
+			for (auto v: vertex.vertices_ccw()) {
+				auto edge = mesh.point(vertex) - mesh.point(v);
+				if (edge.length() != 0) {
+					normal += edge / edge.length();
+				}
+			}
+		}
 		mesh.set_normal(vertex, normal / normal.length());
 	}
 
