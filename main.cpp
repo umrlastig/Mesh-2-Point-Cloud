@@ -74,6 +74,7 @@ int main(int argc, char *argv[]) {
 		mesh.set_normal(vertex, OpenMesh::MyMesh::Normal(0));
 	}
 
+	std::map<OpenMesh::FaceHandle, bool> flat_faces;
 	for (auto face: mesh.faces()) {
 		std::vector<OpenMesh::MyMesh::Point> points;
 		points.reserve(3);
@@ -83,9 +84,14 @@ int main(int argc, char *argv[]) {
 		}
 		
 		auto normal = OpenMesh::cross(points[1] - points[0], points[2] - points[0]);
-		
-		for (auto vertex: face.vertices()) {
-			mesh.set_normal(vertex, mesh.normal(vertex) + normal);
+
+		if (normal.length() != 0) {
+			flat_faces[face] = false;
+			for (auto vertex: face.vertices()) {
+				mesh.set_normal(vertex, mesh.normal(vertex) + normal);
+			}
+		} else {
+			flat_faces[face] = true;
 		}
 	}
 
@@ -128,48 +134,49 @@ int main(int argc, char *argv[]) {
 	boost::tie (ps_v, boost::tuples::ignore) = point_set.add_property_map<int>("v", 0);
 
 	for (auto face: mesh.faces()) {
+		if (!flat_faces[face]) {
+			CGAL::Polygon polygon;
+			CGAL::Point_set_kernel::Vector_3 points[3];
+			CGAL::Point_set_kernel::Vector_3 normals[3];
+			auto arrangement_id = mesh.property(textures_index, face);
 
-		CGAL::Polygon polygon;
-		CGAL::Point_set_kernel::Vector_3 points[3];
-		CGAL::Point_set_kernel::Vector_3 normals[3];
-		auto arrangement_id = mesh.property(textures_index, face);
+			std::size_t i = 0;
+			for (auto hh: face.halfedges()) {
+				auto texCoord = mesh.texcoord2D(hh);
+				polygon.push_back(CGAL::Polygon_kernel::Point_2(texCoord[0]*width[arrangement_id], texCoord[1]*height[arrangement_id]));
+				auto point = mesh.point(hh.to());
+				points[i] = CGAL::Point_set_kernel::Vector_3(point[0], point[1], point[2]);
+				auto normal = mesh.normal(hh.to());
+				normals[i] = CGAL::Point_set_kernel::Vector_3(normal[0], normal[1], normal[2]);
+				i++;
+			}
 
-		std::size_t i = 0;
-		for (auto hh: face.halfedges()) {
-			auto texCoord = mesh.texcoord2D(hh);
-			polygon.push_back(CGAL::Polygon_kernel::Point_2(texCoord[0]*width[arrangement_id], texCoord[1]*height[arrangement_id]));
-			auto point = mesh.point(hh.to());
-			points[i] = CGAL::Point_set_kernel::Vector_3(point[0], point[1], point[2]);
-			auto normal = mesh.normal(hh.to());
-			normals[i] = CGAL::Point_set_kernel::Vector_3(normal[0], normal[1], normal[2]);
-			i++;
-		}
+			if (polygon.is_simple()) {
 
-		if (polygon.is_simple()) {
+				auto box = polygon.bbox();
 
-			auto box = polygon.bbox();
+				for (int u = ((int) box.xmin()); u < ((int) box.xmax()) + 1; u++) {
+					for (int v = ((int) box.ymin()); v < ((int) box.ymax()) + 1; v++) {
 
-			for (int u = ((int) box.xmin()); u < ((int) box.xmax()) + 1; u++) {
-				for (int v = ((int) box.ymin()); v < ((int) box.ymax()) + 1; v++) {
+						auto uv_point = CGAL::Polygon_kernel::Point_2(0.5 + u, 0.5 + v);
 
-					auto uv_point = CGAL::Polygon_kernel::Point_2(0.5 + u, 0.5 + v);
+						if (!polygon.has_on_unbounded_side(uv_point)) {
 
-					if (!polygon.has_on_unbounded_side(uv_point)) {
+							auto lambda = CGAL::Barycentric_coordinates::compute_triangle_coordinates_2(polygon[0], polygon[1], polygon[2], uv_point, CGAL::Polygon_kernel());
 
-						auto lambda = CGAL::Barycentric_coordinates::compute_triangle_coordinates_2(polygon[0], polygon[1], polygon[2], uv_point, CGAL::Polygon_kernel());
+							CGAL::Point_set_kernel::Point_3 point = CGAL::Point_set_kernel::Point_3(0,0,0) + CGAL::to_double(lambda[0]) * points[0] + CGAL::to_double(lambda[1]) * points[1] + CGAL::to_double(lambda[2]) * points[2];
+							CGAL::Point_set_kernel::Vector_3 normal = CGAL::to_double(lambda[0]) * normals[0] + CGAL::to_double(lambda[1]) * normals[1] + CGAL::to_double(lambda[2]) * normals[2];
 
-						CGAL::Point_set_kernel::Point_3 point = CGAL::Point_set_kernel::Point_3(0,0,0) + CGAL::to_double(lambda[0]) * points[0] + CGAL::to_double(lambda[1]) * points[1] + CGAL::to_double(lambda[2]) * points[2];
-						CGAL::Point_set_kernel::Vector_3 normal = CGAL::to_double(lambda[0]) * normals[0] + CGAL::to_double(lambda[1]) * normals[1] + CGAL::to_double(lambda[2]) * normals[2];
+							auto point_xyz = point_set.insert(point, normal);
+							ps_label[*point_xyz] = mesh.property(label, face);
+							ps_u[*point_xyz] = u;
+							ps_v[*point_xyz] = v;
 
-						auto point_xyz = point_set.insert(point, normal);
-						ps_label[*point_xyz] = mesh.property(label, face);
-						ps_u[*point_xyz] = u;
-						ps_v[*point_xyz] = v;
+							ps_red[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 0];
+							ps_green[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 1];
+							ps_blue[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 2];
 
-						ps_red[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 0];
-						ps_green[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 1];
-						ps_blue[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 2];
-
+						}
 					}
 				}
 			}
