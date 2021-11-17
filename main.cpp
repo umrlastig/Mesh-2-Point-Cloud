@@ -49,6 +49,7 @@ int main(int argc, char *argv[]) {
 	mesh.request_halfedge_texcoords2D();
 	mesh.request_face_texture_index();
 	mesh.request_vertex_normals();
+	mesh.request_face_normals();
 
 	OpenMesh::IO::Options ropt;
 	ropt += OpenMesh::IO::Options::FaceTexCoord;
@@ -74,7 +75,6 @@ int main(int argc, char *argv[]) {
 		mesh.set_normal(vertex, OpenMesh::MyMesh::Normal(0));
 	}
 
-	std::map<OpenMesh::FaceHandle, bool> flat_faces;
 	for (auto face: mesh.faces()) {
 		std::vector<OpenMesh::MyMesh::Point> points;
 		points.reserve(3);
@@ -86,12 +86,12 @@ int main(int argc, char *argv[]) {
 		auto normal = OpenMesh::cross(points[1] - points[0], points[2] - points[0]);
 
 		if (normal.length() != 0) {
-			flat_faces[face] = false;
+			mesh.set_normal(face, normal / normal.length());
 			for (auto vertex: face.vertices()) {
 				mesh.set_normal(vertex, mesh.normal(vertex) + normal);
 			}
 		} else {
-			flat_faces[face] = true;
+			mesh.set_normal(face, normal);
 		}
 	}
 
@@ -141,8 +141,18 @@ int main(int argc, char *argv[]) {
 	boost::tie (ps_u, boost::tuples::ignore) = point_set.add_property_map<int>("u", 0);
 	boost::tie (ps_v, boost::tuples::ignore) = point_set.add_property_map<int>("v", 0);
 
+	CGAL::Point_set::Property_map<int> face_id;
+	boost::tie (face_id, boost::tuples::ignore) = point_set.add_property_map<int>("face_id", -1);
+
+	CGAL::Point_set::Property_map<double> nx_0;
+	CGAL::Point_set::Property_map<double> ny_0;
+	CGAL::Point_set::Property_map<double> nz_0;
+	boost::tie (nx_0, boost::tuples::ignore) = point_set.add_property_map<double>("fnx", 0);
+	boost::tie (ny_0, boost::tuples::ignore) = point_set.add_property_map<double>("fny", 0);
+	boost::tie (nz_0, boost::tuples::ignore) = point_set.add_property_map<double>("fnz", 0);
+
 	for (auto face: mesh.faces()) {
-		if (!flat_faces[face]) {
+		if (mesh.normal(face).length() > 0) {
 			CGAL::Polygon polygon;
 			CGAL::Point_set_kernel::Vector_3 points[3];
 			CGAL::Point_set_kernel::Vector_3 normals[3];
@@ -174,11 +184,17 @@ int main(int argc, char *argv[]) {
 
 							CGAL::Point_set_kernel::Point_3 point = CGAL::Point_set_kernel::Point_3(0,0,0) + CGAL::to_double(lambda[0]) * points[0] + CGAL::to_double(lambda[1]) * points[1] + CGAL::to_double(lambda[2]) * points[2];
 							CGAL::Point_set_kernel::Vector_3 normal = CGAL::to_double(lambda[0]) * normals[0] + CGAL::to_double(lambda[1]) * normals[1] + CGAL::to_double(lambda[2]) * normals[2];
+							auto normal_0 = mesh.normal(face);
 
 							auto point_xyz = point_set.insert(point, normal);
 							ps_label[*point_xyz] = mesh.property(label, face);
 							ps_u[*point_xyz] = u;
 							ps_v[*point_xyz] = v;
+							face_id[*point_xyz] = face.idx();
+
+							nx_0[*point_xyz] = normal_0[0];
+							ny_0[*point_xyz] = normal_0[1];
+							nz_0[*point_xyz] = normal_0[2];
 
 							ps_red[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 0];
 							ps_green[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 1];
