@@ -15,6 +15,8 @@
 #include <CGAL/Point_set_3/IO.h>
 #include <CGAL/property_map.h>
 
+#include <CGAL/grid_simplify_point_set.h>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
@@ -97,7 +99,7 @@ int main(int argc, char *argv[]) {
 
 	for (auto vertex: mesh.vertices()) {
 		auto normal = mesh.normal(vertex);
-		if (normal.length() == 0) {
+		if (normal.length() == 0 and vertex.valence() > 0) {
 			for (auto v: vertex.vertices_ccw()) {
 				auto edge = mesh.point(vertex) - mesh.point(v);
 				if (edge.length() != 0) {
@@ -208,6 +210,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	std::cout << "Point cloud computed" << std::endl;
+
+	// Simplify point set
+	point_set.remove(CGAL::grid_simplify_point_set(point_set, 0.2), point_set.end());
 
 	// Output file
 	std::ofstream out_file (argv[2]);
