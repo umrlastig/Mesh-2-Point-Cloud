@@ -20,6 +20,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
+#include <getopt.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -38,12 +39,47 @@ namespace CGAL {
 }
 
 int main(int argc, char *argv[]) {
-	if (argc < 3) {
-		std::cerr << "Usage: " << argv[0] << " Mesh_File PC_File" << std::endl;
-		return 1;
+
+	int opt;
+	const struct option options[] = {
+		{"help", no_argument, NULL, 'h'},
+		{"gridSubSampling", required_argument, NULL, 'g'},
+		{"poissonDiskSampling", required_argument, NULL, 'p'},
+		{NULL, 0, 0, '\0'}
+	};
+
+	double gridSubSampling = 0; //size of the grid use for grid sub-sampling
+	double poissonDiskSampling = 0; //min distance for poisson disk sampling
+
+	while ((opt = getopt_long(argc, argv, "hg:p:", options, NULL)) != -1) {
+		switch(opt) {
+			case 'h':
+				std::cout << "Usage: " << argv[0] << " [OPTION] MESH_FILE PC_FILE" << std::endl;
+				std::cout << "Convert the mesh from MESH_FILE into a point cloud in PC_FILE (PLY file)." << std::endl;
+				std::cout << "By default, one point is sampled per texel. This behavior can be changed by using the -p option." << std::endl << std::endl;
+				std::cout << "OPTIONS:" << std::endl;
+				std::cout << " -h, --help                   Print this help anq quit." << std::endl;
+				std::cout << " -g, --gridSubSampling=G      Subsample the final point cloud, keeping one point per voxel of size G." << std::endl;
+				std::cout << " -p, --poissonDiskSampling=P  Use poisson isk sampling with parameter P." << std::endl << std::endl;
+				return EXIT_SUCCESS;
+				break;
+			case 'g':
+				gridSubSampling = strtod(optarg, NULL);
+				break;
+			case 'p':
+				poissonDiskSampling = strtod(optarg, NULL);
+				break;
+		}
 	}
 
-	std::cout << "Convert " << argv[1] << " into " << argv[2] << std::endl;
+	if (argc != optind + 2) {
+		std::cerr << "MESH_FILE and PC_FILE are mandatory" << std::endl;
+		std::cerr << "Usage: " << argv[0] << " [OPTION] MESH_FILE PC_FILE" << std::endl;
+		std::cerr << "Use -h/--help to obtain more informations" << std::endl;
+		return EXIT_FAILURE;
+	}
+
+	std::cout << "Convert " << argv[optind] << " into " << argv[optind+1] << std::endl;
 
 	// Read Mesh
 	OpenMesh::MyMesh mesh;
@@ -57,8 +93,8 @@ int main(int argc, char *argv[]) {
 	ropt += OpenMesh::IO::Options::FaceTexCoord;
 	ropt += OpenMesh::IO::Options::Custom;
 
-	if ( ! OpenMesh::IO::read_mesh(mesh, argv[1], ropt)) {
-		std::cerr << "Error loading mesh from file " << argv[1] << std::endl;
+	if ( ! OpenMesh::IO::read_mesh(mesh, argv[optind], ropt)) {
+		std::cerr << "Error loading mesh from file " << argv[optind] << std::endl;
 		return 1;
 	}
 
@@ -121,7 +157,7 @@ int main(int argc, char *argv[]) {
 	unsigned char *data[num_textures];
 
 	for (int i = 0; i < num_textures; i++) {
-		data[i] = stbi_load((std::string(argv[1]).substr(0, std::string(argv[1]).find_last_of('/')+1)+mesh.property(textures_files)[i]).c_str(), &width[i], &height[i], &n[i], 3);
+		data[i] = stbi_load((std::string(argv[optind]).substr(0, std::string(argv[optind]).find_last_of('/')+1)+mesh.property(textures_files)[i]).c_str(), &width[i], &height[i], &n[i], 3);
 	}
 
 	// Write Point Cloud
@@ -212,10 +248,12 @@ int main(int argc, char *argv[]) {
 	std::cout << "Point cloud computed" << std::endl;
 
 	// Simplify point set
-	point_set.remove(CGAL::grid_simplify_point_set(point_set, 0.2), point_set.end());
+	if (gridSubSampling > 0) {
+		point_set.remove(CGAL::grid_simplify_point_set(point_set, gridSubSampling), point_set.end());
+	}
 
 	// Output file
-	std::ofstream out_file (argv[2]);
+	std::ofstream out_file (argv[optind+1]);
 	out_file << point_set;
 		
 	return 0;
