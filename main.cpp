@@ -15,6 +15,14 @@
 #include <CGAL/Point_set_3/IO.h>
 #include <CGAL/property_map.h>
 
+#include <CGAL/boost/graph/graph_traits_PolyMesh_ArrayKernelT.h>
+#include <CGAL/Polygon_mesh_processing/distance.h>
+#include <CGAL/Polygon_mesh_processing/locate.h>
+
+#include <CGAL/AABB_face_graph_triangle_primitive.h>
+#include <CGAL/AABB_tree.h>
+#include <CGAL/AABB_traits.h>
+
 #include <CGAL/grid_simplify_point_set.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -27,7 +35,7 @@
 #include <map>
 
 namespace OpenMesh {
-	typedef TriMesh_ArrayKernelT<>	MyMesh;
+	typedef PolyMesh_ArrayKernelT<>	MyMesh;
 }
 
 namespace CGAL {
@@ -189,60 +197,124 @@ int main(int argc, char *argv[]) {
 	boost::tie (ny_0, boost::tuples::ignore) = point_set.add_property_map<double>("fny", 0);
 	boost::tie (nz_0, boost::tuples::ignore) = point_set.add_property_map<double>("fnz", 0);
 
-	for (auto face: mesh.faces()) {
-		if (mesh.normal(face).length() > 0) {
-			CGAL::Polygon polygon;
-			CGAL::Point_set_kernel::Vector_3 points[3];
-			CGAL::Point_set_kernel::Vector_3 normals[3];
-			auto arrangement_id = mesh.property(textures_index, face);
+	if (poissonDiskSampling <= 0) {
 
-			std::size_t i = 0;
-			for (auto hh: face.halfedges()) {
-				auto texCoord = mesh.texcoord2D(hh);
-				polygon.push_back(CGAL::Polygon_kernel::Point_2(texCoord[0]*width[arrangement_id], texCoord[1]*height[arrangement_id]));
-				auto point = mesh.point(hh.to());
-				points[i] = CGAL::Point_set_kernel::Vector_3(point[0], point[1], point[2]);
-				auto normal = mesh.normal(hh.to());
-				normals[i] = CGAL::Point_set_kernel::Vector_3(normal[0], normal[1], normal[2]);
-				i++;
-			}
+		for (auto face: mesh.faces()) {
+			if (mesh.normal(face).length() > 0) {
+				CGAL::Polygon polygon;
+				CGAL::Point_set_kernel::Vector_3 points[3];
+				CGAL::Point_set_kernel::Vector_3 normals[3];
+				auto arrangement_id = mesh.property(textures_index, face);
 
-			if (polygon.is_simple()) {
+				std::size_t i = 0;
+				for (auto hh: face.halfedges()) {
+					auto texCoord = mesh.texcoord2D(hh);
+					polygon.push_back(CGAL::Polygon_kernel::Point_2(texCoord[0]*width[arrangement_id], texCoord[1]*height[arrangement_id]));
+					auto point = mesh.point(hh.to());
+					points[i] = CGAL::Point_set_kernel::Vector_3(point[0], point[1], point[2]);
+					auto normal = mesh.normal(hh.to());
+					normals[i] = CGAL::Point_set_kernel::Vector_3(normal[0], normal[1], normal[2]);
+					i++;
+				}
 
-				auto box = polygon.bbox();
+				if (polygon.is_simple()) {
 
-				for (int u = ((int) box.xmin()); u < ((int) box.xmax()) + 1; u++) {
-					for (int v = ((int) box.ymin()); v < ((int) box.ymax()) + 1; v++) {
+					auto box = polygon.bbox();
 
-						auto uv_point = CGAL::Polygon_kernel::Point_2(0.5 + u, 0.5 + v);
+					for (int u = ((int) box.xmin()); u < ((int) box.xmax()) + 1; u++) {
+						for (int v = ((int) box.ymin()); v < ((int) box.ymax()) + 1; v++) {
 
-						if (!polygon.has_on_unbounded_side(uv_point)) {
+							auto uv_point = CGAL::Polygon_kernel::Point_2(0.5 + u, 0.5 + v);
 
-							auto lambda = CGAL::Barycentric_coordinates::compute_triangle_coordinates_2(polygon[0], polygon[1], polygon[2], uv_point, CGAL::Polygon_kernel());
+							if (!polygon.has_on_unbounded_side(uv_point)) {
 
-							CGAL::Point_set_kernel::Point_3 point = CGAL::Point_set_kernel::Point_3(0,0,0) + CGAL::to_double(lambda[0]) * points[0] + CGAL::to_double(lambda[1]) * points[1] + CGAL::to_double(lambda[2]) * points[2];
-							CGAL::Point_set_kernel::Vector_3 normal = CGAL::to_double(lambda[0]) * normals[0] + CGAL::to_double(lambda[1]) * normals[1] + CGAL::to_double(lambda[2]) * normals[2];
-							auto normal_0 = mesh.normal(face);
+								auto lambda = CGAL::Barycentric_coordinates::compute_triangle_coordinates_2(polygon[0], polygon[1], polygon[2], uv_point, CGAL::Polygon_kernel());
 
-							auto point_xyz = point_set.insert(point, normal);
-							ps_label[*point_xyz] = mesh.property(label, face);
-							ps_u[*point_xyz] = u;
-							ps_v[*point_xyz] = v;
-							face_id[*point_xyz] = face.idx();
+								CGAL::Point_set_kernel::Point_3 point = CGAL::Point_set_kernel::Point_3(0,0,0) + CGAL::to_double(lambda[0]) * points[0] + CGAL::to_double(lambda[1]) * points[1] + CGAL::to_double(lambda[2]) * points[2];
+								CGAL::Point_set_kernel::Vector_3 normal = CGAL::to_double(lambda[0]) * normals[0] + CGAL::to_double(lambda[1]) * normals[1] + CGAL::to_double(lambda[2]) * normals[2];
+								auto normal_0 = mesh.normal(face);
 
-							nx_0[*point_xyz] = normal_0[0];
-							ny_0[*point_xyz] = normal_0[1];
-							nz_0[*point_xyz] = normal_0[2];
+								auto point_xyz = point_set.insert(point, normal);
+								ps_label[*point_xyz] = mesh.property(label, face);
+								ps_u[*point_xyz] = u;
+								ps_v[*point_xyz] = v;
+								face_id[*point_xyz] = face.idx();
 
-							ps_red[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 0];
-							ps_green[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 1];
-							ps_blue[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 2];
+								nx_0[*point_xyz] = normal_0[0];
+								ny_0[*point_xyz] = normal_0[1];
+								nz_0[*point_xyz] = normal_0[2];
 
+								ps_red[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 0];
+								ps_green[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 1];
+								ps_blue[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 2];
+
+							}
 						}
 					}
 				}
 			}
 		}
+
+	} else {
+
+		std::vector<CGAL::Point_3<CGAL::Epick>> samples;
+		CGAL::Polygon_mesh_processing::sample_triangle_mesh(mesh, std::back_inserter(samples), CGAL::Polygon_mesh_processing::parameters::number_of_points_per_area_unit(1/(poissonDiskSampling*poissonDiskSampling)).number_of_points_per_distance_unit(1/poissonDiskSampling));
+		std::cout << samples.size()<<" points sampled on mesh"<<std::endl;
+
+		CGAL::AABB_tree<CGAL::AABB_traits<CGAL::GetGeomTraits<OpenMesh::MyMesh>::type, CGAL::AABB_face_graph_triangle_primitive<OpenMesh::MyMesh>> > tree;
+  		CGAL::Polygon_mesh_processing::build_AABB_tree(mesh, tree);
+
+		std::cout << "AABB tree compute" << std::endl;
+
+		for (auto sample: samples) {
+			auto query_location = CGAL::Polygon_mesh_processing::locate_with_AABB_tree(sample, tree, mesh);
+			auto face = OpenMesh::make_smart(query_location.first, mesh);
+
+			if (mesh.normal(face).length() > 0) {
+
+				auto lambda = query_location.second;
+
+				CGAL::Point_set_kernel::Vector_2 texCoords[3];
+				CGAL::Point_set_kernel::Vector_3 points[3];
+				CGAL::Point_set_kernel::Vector_3 normals[3];
+				auto arrangement_id = mesh.property(textures_index, face);
+
+				std::size_t i = 0;
+				for (auto hh: face.halfedges()) {
+					auto texCoord = mesh.texcoord2D(hh);
+					texCoords[i] = CGAL::Point_set_kernel::Vector_2(texCoord[0]*width[arrangement_id], texCoord[1]*height[arrangement_id]);
+					auto point = mesh.point(hh.to());
+					points[i] = CGAL::Point_set_kernel::Vector_3(point[0], point[1], point[2]);
+					auto normal = mesh.normal(hh.to());
+					normals[i] = CGAL::Point_set_kernel::Vector_3(normal[0], normal[1], normal[2]);
+					i++;
+				}
+
+				CGAL::Point_set_kernel::Point_2 uv = CGAL::Point_set_kernel::Point_2(0,0) + lambda[0] * texCoords[0] + lambda[1] * texCoords[1] + lambda[2] * texCoords[2];
+				CGAL::Point_set_kernel::Point_3 point = CGAL::Point_set_kernel::Point_3(0,0,0) + lambda[0] * points[0] + lambda[1] * points[1] + lambda[2] * points[2];
+				CGAL::Point_set_kernel::Vector_3 normal = lambda[0] * normals[0] + lambda[1] * normals[1] + lambda[2] * normals[2];
+				auto normal_0 = mesh.normal(face);
+				int u = uv[0];
+				int v = uv[1];
+
+				auto point_xyz = point_set.insert(point, normal);
+				ps_label[*point_xyz] = mesh.property(label, face);
+				ps_u[*point_xyz] = u;
+				ps_v[*point_xyz] = v;
+				face_id[*point_xyz] = face.idx();
+
+				nx_0[*point_xyz] = normal_0[0];
+				ny_0[*point_xyz] = normal_0[1];
+				nz_0[*point_xyz] = normal_0[2];
+
+				ps_red[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 0];
+				ps_green[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 1];
+				ps_blue[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 2];
+			
+			}
+
+		}
+
 	}
 
 	std::cout << "Point cloud computed" << std::endl;
