@@ -15,6 +15,9 @@
 #include <CGAL/Point_set_3/IO.h>
 #include <CGAL/property_map.h>
 
+#include <CGAL/Kd_tree.h>
+#include <CGAL/Fuzzy_sphere.h>
+
 #include <CGAL/boost/graph/graph_traits_PolyMesh_ArrayKernelT.h>
 #include <CGAL/Polygon_mesh_processing/distance.h>
 #include <CGAL/Polygon_mesh_processing/locate.h>
@@ -257,17 +260,26 @@ int main(int argc, char *argv[]) {
 
 	} else {
 
-		std::vector<CGAL::Point_3<CGAL::Epick>> samples;
-		CGAL::Polygon_mesh_processing::sample_triangle_mesh(mesh, std::back_inserter(samples), CGAL::Polygon_mesh_processing::parameters::number_of_points_per_area_unit(1/(poissonDiskSampling*poissonDiskSampling)).number_of_points_per_distance_unit(1/poissonDiskSampling));
+		std::list<CGAL::Point_3<CGAL::Epick>> samples;
+		CGAL::Polygon_mesh_processing::sample_triangle_mesh(mesh, std::back_inserter(samples), CGAL::Polygon_mesh_processing::parameters::do_sample_vertices(false).do_sample_edges(false).use_monte_carlo_sampling(true).number_of_points_per_area_unit(10/(poissonDiskSampling*poissonDiskSampling)));
 		std::cout << samples.size()<<" points sampled on mesh"<<std::endl;
 
-		CGAL::AABB_tree<CGAL::AABB_traits<CGAL::GetGeomTraits<OpenMesh::MyMesh>::type, CGAL::AABB_face_graph_triangle_primitive<OpenMesh::MyMesh>> > tree;
-  		CGAL::Polygon_mesh_processing::build_AABB_tree(mesh, tree);
+		CGAL::Kd_tree<CGAL::Search_traits_3<CGAL::Epick>> point_tree(samples.begin(), samples.end());
+		point_tree.build();
 
-		std::cout << "AABB tree compute" << std::endl;
+		std::cout << "Samples K-D tree compute" << std::endl;
 
-		for (auto sample: samples) {
-			auto query_location = CGAL::Polygon_mesh_processing::locate_with_AABB_tree(sample, tree, mesh);
+		CGAL::AABB_tree<CGAL::AABB_traits<CGAL::GetGeomTraits<OpenMesh::MyMesh>::type, CGAL::AABB_face_graph_triangle_primitive<OpenMesh::MyMesh>> > mesh_tree;
+  		CGAL::Polygon_mesh_processing::build_AABB_tree(mesh, mesh_tree);
+
+		std::cout << "Mesh AABB tree compute" << std::endl;
+
+		CGAL::Fuzzy_sphere<CGAL::Search_traits_3<CGAL::Epick>> sampling_spere(CGAL::Point_3<CGAL::Epick>(0,0,0), 10e6);
+		auto sample = point_tree.search_any_point(sampling_spere);
+
+		while (sample) {
+
+			auto query_location = CGAL::Polygon_mesh_processing::locate_with_AABB_tree(*sample, mesh_tree, mesh);
 			auto face = OpenMesh::make_smart(query_location.first, mesh);
 
 			if (mesh.normal(face).length() > 0) {
@@ -313,11 +325,21 @@ int main(int argc, char *argv[]) {
 			
 			}
 
+			CGAL::Fuzzy_sphere<CGAL::Search_traits_3<CGAL::Epick>> sphere(*sample, poissonDiskSampling);
+			std::list<CGAL::Point_3<CGAL::Epick>> to_remove;
+			point_tree.search(std::back_inserter(to_remove), sphere);
+
+			for(auto r: to_remove) {
+				point_tree.remove(r);
+			}
+
+			sample = point_tree.search_any_point(sampling_spere);
+
 		}
 
 	}
 
-	std::cout << "Point cloud computed" << std::endl;
+	std::cout << "Point cloud computed with " << point_set.size() << " points" << std::endl;
 
 	// Simplify point set
 	if (gridSubSampling > 0) {
