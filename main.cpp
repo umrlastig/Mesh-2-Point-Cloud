@@ -59,10 +59,11 @@ int main(int argc, char *argv[]) {
 		{NULL, 0, 0, '\0'}
 	};
 
+	double texelScale = 1; //size of the grid use for grid sub-sampling
 	double gridSubSampling = 0; //size of the grid use for grid sub-sampling
 	double poissonDiskSampling = 0; //min distance for poisson disk sampling
 
-	while ((opt = getopt_long(argc, argv, "hg:p:", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "hg:p:s:", options, NULL)) != -1) {
 		switch(opt) {
 			case 'h':
 				std::cout << "Usage: " << argv[0] << " [OPTION] MESH_FILE PC_FILE" << std::endl;
@@ -70,9 +71,13 @@ int main(int argc, char *argv[]) {
 				std::cout << "By default, one point is sampled per texel. This behavior can be changed by using the -p option." << std::endl << std::endl;
 				std::cout << "OPTIONS:" << std::endl;
 				std::cout << " -h, --help                   Print this help anq quit." << std::endl;
-				std::cout << " -g, --gridSubSampling=G      Subsample the final point cloud, keeping one point per voxel of size G." << std::endl;
+				std::cout << " -s, --texelScale=S           Adapt texel size with parameter S (default 1.0)." << std::endl << std::endl;
 				std::cout << " -p, --poissonDiskSampling=P  Use poisson isk sampling with parameter P." << std::endl << std::endl;
+				std::cout << " -g, --gridSubSampling=G      Subsample the final point cloud, keeping one point per voxel of size G." << std::endl;
 				return EXIT_SUCCESS;
+				break;
+			case 's':
+				texelScale = strtod(optarg, NULL);
 				break;
 			case 'g':
 				gridSubSampling = strtod(optarg, NULL);
@@ -224,8 +229,8 @@ int main(int argc, char *argv[]) {
 
 					auto box = polygon.bbox();
 
-					for (int u = ((int) box.xmin()); u < ((int) box.xmax()) + 1; u++) {
-						for (int v = ((int) box.ymin()); v < ((int) box.ymax()) + 1; v++) {
+					for (double u = ((int) box.xmin()); u < ((int) box.xmax()) + 1; u += texelScale) {
+						for (double v = ((int) box.ymin()); v < ((int) box.ymax()) + 1; v += texelScale) {
 
 							auto uv_point = CGAL::Polygon_kernel::Point_2(0.5 + u, 0.5 + v);
 
@@ -239,17 +244,17 @@ int main(int argc, char *argv[]) {
 
 								auto point_xyz = point_set.insert(point, normal);
 								ps_label[*point_xyz] = mesh.property(label, face);
-								ps_u[*point_xyz] = u;
-								ps_v[*point_xyz] = v;
+								ps_u[*point_xyz] = ((int) u);
+								ps_v[*point_xyz] = ((int) v);
 								face_id[*point_xyz] = face.idx();
 
 								nx_0[*point_xyz] = normal_0[0];
 								ny_0[*point_xyz] = normal_0[1];
 								nz_0[*point_xyz] = normal_0[2];
 
-								ps_red[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 0];
-								ps_green[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 1];
-								ps_blue[*point_xyz] = data[arrangement_id][3*(u + (height[arrangement_id] - v - 1)*width[arrangement_id]) + 2];
+								ps_red[*point_xyz] = data[arrangement_id][3*(((int) u) + (height[arrangement_id] - ((int) v) - 1)*width[arrangement_id]) + 0];
+								ps_green[*point_xyz] = data[arrangement_id][3*(((int) u) + (height[arrangement_id] - ((int) v) - 1)*width[arrangement_id]) + 1];
+								ps_blue[*point_xyz] = data[arrangement_id][3*(((int) u) + (height[arrangement_id] - ((int) v) - 1)*width[arrangement_id]) + 2];
 
 							}
 						}
